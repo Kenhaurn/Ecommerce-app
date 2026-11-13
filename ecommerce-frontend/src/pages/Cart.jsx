@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { API_URL } from '../config';
 
-function Cart({ cart, onRemove, total, user }) {
+function Cart({ cart, onRemove, onChangeQty, total, user, onOrderPlaced }) {
     const [error, setError] = useState('');
+    const [placing, setPlacing] = useState(false);
     const [delivery, setDelivery] = useState({
         name: '',
         phone: '',
@@ -17,13 +19,14 @@ function Cart({ cart, onRemove, total, user }) {
     async function placeOrder() {
         setError('');
 
-        const grouped = {};
-        cart.forEach(item => {
-            grouped[item.id] = (grouped[item.id] || 0) + 1;
-        });
-        const items = Object.entries(grouped).map(([productId, quantity]) => ({
-            productId,
-            quantity,
+        if (!delivery.name.trim() || !delivery.phone.trim() || !delivery.address.trim() || !delivery.city.trim()) {
+            setError('Please fill in all delivery details.');
+            return;
+        }
+
+        const items = cart.map(item => ({
+            productId: item.id,
+            quantity: item.quantity,
         }));
 
         const headers = {
@@ -31,33 +34,40 @@ function Cart({ cart, onRemove, total, user }) {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
         };
 
+        setPlacing(true);
         try {
-            const res = await fetch('http://localhost:5000/api/orders', {
+            const res = await fetch(`${API_URL}/api/orders`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ items, delivery }),
             });
             const order = await res.json();
             if (!res.ok) {
-                setError(order.message);
+                setError(order.message || 'Could not place the order.');
+                setPlacing(false);
                 return;
             }
 
-            const payRes = await fetch(`http://localhost:5000/api/orders/${order.id}/pay`, {
+            // Order is saved, so the cart has done its job
+            onOrderPlaced();
+
+            const payRes = await fetch(`${API_URL}/api/orders/${order.id}/pay`, {
                 method: 'POST',
                 headers,
             });
             const payData = await payRes.json();
             if (!payRes.ok) {
                 setError(
-                    `Your order was saved, but payment could not start: ${payData.message} You can finish it from My Orders.`
+                    `Your order was saved, but payment could not start: ${payData.message || 'unknown error'}. You can finish it from My Orders.`
                 );
+                setPlacing(false);
                 return;
             }
 
             window.location.href = payData.authorizationUrl;
         } catch {
             setError('Could not reach the server.');
+            setPlacing(false);
         }
     }
 
@@ -77,10 +87,37 @@ function Cart({ cart, onRemove, total, user }) {
                 <div className="cart-layout">
                     <ul className="cart-list">
                         {cart.map(item => (
-                            <li key={item.cartId}>
-                                <span className="cart-name">{item.name}</span>
-                                <span className="cart-price">₦{Number(item.price).toLocaleString()}</span>
-                                <button className="btn-danger btn-small" onClick={() => onRemove(item.cartId)}>
+                            <li key={item.id}>
+                                <span className="cart-name">
+                                    {item.name}
+                                    <small style={{ display: 'block', opacity: 0.7 }}>
+                                        ₦{Number(item.price).toLocaleString()} each
+                                    </small>
+                                </span>
+
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        className="btn-small"
+                                        onClick={() => onChangeQty(item.id, -1)}
+                                        aria-label={`Decrease ${item.name}`}
+                                    >
+                                        −
+                                    </button>
+                                    <strong>{item.quantity}</strong>
+                                    <button
+                                        className="btn-small"
+                                        onClick={() => onChangeQty(item.id, 1)}
+                                        disabled={item.quantity >= item.stock}
+                                        aria-label={`Increase ${item.name}`}
+                                    >
+                                        +
+                                    </button>
+                                </span>
+
+                                <span className="cart-price">
+                                    ₦{Number(item.price * item.quantity).toLocaleString()}
+                                </span>
+                                <button className="btn-danger btn-small" onClick={() => onRemove(item.id)}>
                                     Remove
                                 </button>
                             </li>
@@ -101,7 +138,9 @@ function Cart({ cart, onRemove, total, user }) {
                                 <input name="phone" placeholder="Phone number" value={delivery.phone} onChange={handleDeliveryChange} />
                                 <input name="address" placeholder="Street address" value={delivery.address} onChange={handleDeliveryChange} />
                                 <input name="city" placeholder="City / State" value={delivery.city} onChange={handleDeliveryChange} />
-                                <button onClick={placeOrder}>Place order</button>
+                                <button onClick={placeOrder} disabled={placing}>
+                                    {placing ? 'Please wait...' : 'Place order'}
+                                </button>
                             </>
                         ) : (
                             <p>

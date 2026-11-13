@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import ProductCard from '../components/ProductCard';
+import { API_URL } from '../config';
 
 function Home({ onAdd }) {
     const [products, setProducts] = useState([]);
@@ -7,16 +8,27 @@ function Home({ onAdd }) {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        fetch('http://localhost:5000/api/products')
-            .then(res => res.json())
+        let ignore = false;
+
+        fetch(`${API_URL}/api/products`)
+            .then(res => {
+                if (!res.ok) throw new Error('Failed');
+                return res.json();
+            })
             .then(data => {
-                setProducts(data);
+                if (ignore) return;
+                setProducts(Array.isArray(data) ? data : []);
                 setLoading(false);
             })
             .catch(() => {
+                if (ignore) return;
                 setError('Could not load products.');
                 setLoading(false);
             });
+
+        return () => {
+            ignore = true;
+        };
     }, []);
 
     return (
@@ -38,7 +50,11 @@ function Home({ onAdd }) {
 
             {error && <p style={{ color: 'red' }}>{error}</p>}
 
-            {!loading && !error && (
+            {!loading && !error && products.length === 0 && (
+                <p>No products yet. Check back soon.</p>
+            )}
+
+            {!loading && !error && products.length > 0 && (
                 <div className="product-grid">
                     {products.map((product, index) => (
                         <ProductCard
@@ -47,6 +63,7 @@ function Home({ onAdd }) {
                             name={product.name}
                             price={product.price}
                             stock={product.stock}
+                            image={product.image}
                             index={index}
                             onAdd={() => onAdd(product)}
                         />

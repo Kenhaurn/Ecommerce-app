@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import { API_URL } from '../config';
 
 // Fades a section in when it scrolls into view
 function Reveal({ children, delay = 0 }) {
@@ -39,7 +40,7 @@ function Landing() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:5000/api/products')
+        fetch(`${API_URL}/api/products`)
             .then(res => res.json())
             .then(data => {
                 setProducts(Array.isArray(data) ? data.slice(0, 4) : []);
@@ -130,6 +131,7 @@ function Landing() {
                                         name={product.name}
                                         price={product.price}
                                         stock={product.stock}
+                                        image={product.image}
                                         index={index}
                                     />
                                 ))}

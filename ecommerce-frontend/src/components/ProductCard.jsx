@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useToast } from './Toast';
 
 function tileColor(name) {
     let hash = 0;
@@ -13,17 +14,22 @@ function stockInfo(stock) {
     return { text: 'In stock', cls: 'in' };
 }
 
-function ProductCard({ id, name, price, stock, index = 0, onAdd }) {
+function ProductCard({ id, name, price, stock, image, index = 0, onAdd }) {
+    const toast = useToast();
     const [added, setAdded] = useState(false);
     const count = stock ?? 0;
     const info = stockInfo(count);
 
     function handleAdd() {
-        onAdd();
+        const ok = onAdd();
+        if (ok === false) {
+            toast.info('You already have all the available stock of this item in your cart.');
+            return;
+        }
         setAdded(true);
         setTimeout(() => setAdded(false), 1200);
     }
-
+    
     return (
         <div className="product-card" style={{ '--i': index }}>
             <Link
@@ -31,7 +37,11 @@ function ProductCard({ id, name, price, stock, index = 0, onAdd }) {
                 className="product-thumb"
                 style={{ background: tileColor(name) }}
             >
-                <span>{name.charAt(0).toUpperCase()}</span>
+                {image ? (
+                    <img src={image} alt={name} loading="lazy" />
+                ) : (
+                    <span>{name.charAt(0).toUpperCase()}</span>
+                )}
             </Link>
             <div className="product-body">
                 <h3><Link to={`/product/${id}`}>{name}</Link></h3>

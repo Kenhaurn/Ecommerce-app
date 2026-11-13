@@ -1,7 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { API_URL } from '../config';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 
-const API = 'http://localhost:5000/api/orders';
+const API = `${API_URL}/api/orders`;
+
+const STATUS_LABELS = {
+    pending: 'Awaiting payment',
+    paid: 'Paid',
+    cancelled: 'Cancelled',
+};
+
+const FULFILLMENT_LABELS = {
+    processing: 'Being prepared',
+    shipped: 'Shipped',
+    delivered: 'Delivered',
+};
 
 function authHeaders() {
     return {
@@ -10,16 +25,34 @@ function authHeaders() {
     };
 }
 
+function naira(amount) {
+    return `₦${Number(amount).toLocaleString()}`;
+}
+
+// Reads the JSON body safely, even if the server sent something else
+async function readJson(res) {
+    try {
+        return await res.json();
+    } catch {
+        return {};
+    }
+}
+
 function Orders({ user }) {
+    const toast = useToast();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [notice, setNotice] = useState('');
     const [busyId, setBusyId] = useState(null);
+    const [dialog, setDialog] = useState(null);
 
     async function loadOrders() {
         try {
             const res = await fetch(`${API}/mine`, { headers: authHeaders() });
+            if (res.status === 401) {
+                setError('Your session has expired. Please log in again.');
+                return;
+            }
             if (!res.ok) throw new Error('Failed');
             setOrders(await res.json());
             setError('');
@@ -41,49 +74,56 @@ function Orders({ user }) {
 
     async function completePayment(orderId) {
         setBusyId(orderId);
-        setNotice('');
         try {
             const res = await fetch(`${API}/${orderId}/pay`, {
                 method: 'POST',
                 headers: authHeaders(),
             });
-            const data = await res.json();
+            const data = await readJson(res);
             if (!res.ok) {
-                setNotice(data.message);
+                toast.error(data.message || 'Could not start payment.');
                 return;
             }
             if (data.alreadyPaid) {
-                setNotice('We found your payment. This order is now paid.');
+                toast.success('We found your payment. This order is now paid.');
                 await loadOrders();
                 return;
             }
             window.location.href = data.authorizationUrl;
         } catch {
-            setNotice('Could not reach the server.');
+            toast.error('Could not reach the server.');
         } finally {
             setBusyId(null);
         }
     }
 
+    function askCancel(orderId) {
+        setDialog({
+            title: 'Cancel this order?',
+            message: 'The order will be cancelled and you will not be able to pay for it.',
+            confirmLabel: 'Yes, cancel order',
+            danger: true,
+            onConfirm: () => cancelOrder(orderId),
+        });
+    }
+
     async function cancelOrder(orderId) {
-        if (!confirm('Cancel this order?')) return;
         setBusyId(orderId);
-        setNotice('');
         try {
             const res = await fetch(`${API}/${orderId}/cancel`, {
                 method: 'POST',
                 headers: authHeaders(),
             });
-            const data = await res.json();
+            const data = await readJson(res);
             if (!res.ok) {
-                setNotice(data.message);
+                toast.error(data.message || 'Could not cancel this order.');
                 await loadOrders();
                 return;
             }
-            setNotice('Order cancelled.');
+            toast.success('Order cancelled.');
             await loadOrders();
         } catch {
-            setNotice('Could not reach the server.');
+            toast.error('Could not reach the server.');
         } finally {
             setBusyId(null);
         }
@@ -91,25 +131,24 @@ function Orders({ user }) {
 
     async function checkPayment(orderId) {
         setBusyId(orderId);
-        setNotice('');
         try {
             const res = await fetch(`${API}/${orderId}/check`, {
                 method: 'POST',
                 headers: authHeaders(),
             });
-            const data = await res.json();
+            const data = await readJson(res);
             if (!res.ok) {
-                setNotice(data.message);
+                toast.error(data.message || 'Could not check this payment.');
                 return;
             }
-            setNotice(
-                data.status === 'paid'
-                    ? 'Payment confirmed. This order is now paid.'
-                    : 'No completed payment found for this order yet.'
-            );
+            if (data.status === 'paid') {
+                toast.success('Payment confirmed. This order is now paid.');
+            } else {
+                toast.info('No completed payment found for this order yet.');
+            }
             await loadOrders();
         } catch {
-            setNotice('Could not reach the server.');
+            toast.error('Could not reach the server.');
         } finally {
             setBusyId(null);
         }
@@ -123,13 +162,12 @@ function Orders({ user }) {
         );
     }
     if (loading) return <p>Loading orders...</p>;
-    if (error) return <p>{error}</p>;
 
     return (
         <div>
             <h2>My Orders</h2>
-            {notice && <p>{notice}</p>}
-            {orders.length === 0 && <p>You haven't placed any orders yet.</p>}
+            {error && <p style={{ color: 'red' }}>{error}</p>}
+            {!error && orders.length === 0 && <p>You haven't placed any orders yet.</p>}
             {orders.map(order => (
                 <div
                     key={order.id}
@@ -139,29 +177,38 @@ function Orders({ user }) {
                     <ul>
                         {order.items.map((item, index) => (
                             <li key={index}>
-                                {item.name} × {item.quantity} - ₦{item.price * item.quantity}
+                                {item.name} × {item.quantity} - {naira(item.price * item.quantity)}
                             </li>
                         ))}
                     </ul>
                     <p>
-                        Total: ₦{order.total} | Status: {order.status}
+                        Total: {naira(order.total)} | Status:{' '}
+                        <strong>{STATUS_LABELS[order.status] || order.status}</strong>
+                        {order.status === 'paid' && order.fulfillment && (
+                            <>
+                                {' '}| Delivery:{' '}
+                                <strong>
+                                    {FULFILLMENT_LABELS[order.fulfillment] || order.fulfillment}
+                                </strong>
+                            </>
+                        )}
                     </p>
                     {order.status === 'pending' && (
-                        <div>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                             <button
                                 onClick={() => completePayment(order.id)}
                                 disabled={busyId === order.id}
                             >
                                 Complete payment
-                            </button>{' '}
+                            </button>
                             <button
                                 onClick={() => checkPayment(order.id)}
                                 disabled={busyId === order.id}
                             >
                                 Check payment status
-                            </button>{' '}
+                            </button>
                             <button
-                                onClick={() => cancelOrder(order.id)}
+                                onClick={() => askCancel(order.id)}
                                 disabled={busyId === order.id}
                             >
                                 Cancel order
@@ -170,6 +217,20 @@ function Orders({ user }) {
                     )}
                 </div>
             ))}
+
+            <ConfirmDialog
+                open={!!dialog}
+                title={dialog?.title}
+                message={dialog?.message}
+                confirmLabel={dialog?.confirmLabel}
+                danger={dialog?.danger}
+                onConfirm={() => {
+                    const run = dialog.onConfirm;
+                    setDialog(null);
+                    run();
+                }}
+                onCancel={() => setDialog(null)}
+            />
         </div>
     );
 }
