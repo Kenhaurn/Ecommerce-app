@@ -8,6 +8,8 @@ const required = [
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
+    'CLOUDINARY_API_SECRET',
+    'TURNSTILE_SECRET_KEY',
 ];
 for (const name of required) {
     if (!process.env[name]) {

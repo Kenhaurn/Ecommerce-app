@@ -4,6 +4,28 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
+async function verifyTurnstile(token, ip) {
+    if (typeof token !== 'string' || !token || token.length > 2048) return false;
+    try {
+        const body = new URLSearchParams({
+            secret: process.env.TURNSTILE_SECRET_KEY,
+            response: token,
+        });
+        if (ip) body.append('remoteip', ip);
+
+        const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+            method: 'POST',
+            body,
+            signal: AbortSignal.timeout(10000),
+        });
+        const data = await res.json();
+        return data.success === true;
+    } catch (err) {
+        console.error('Turnstile check error:', err.message);
+        return false;
+    }
+}
+
 const router = express.Router();
 
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
@@ -15,6 +37,9 @@ function createToken(user) {
 
 router.post('/register', async (req, res) => {
     try {
+        if (!(await verifyTurnstile(req.body && req.body.turnstileToken, req.ip))) {
+            return res.status(400).json({ message: 'Human check failed. Please try again.' });
+        }
         const { name, email, password } = req.body || {};
 
         if (

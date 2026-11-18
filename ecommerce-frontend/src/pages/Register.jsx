@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { API_URL } from '../config';
+import TurnstileWidget from '../components/TurnstileWidget';
+
+const TURNSTILE_ON = Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
 
 function Register({ onAuth }) {
     const [name, setName] = useState('');
@@ -8,6 +11,8 @@ function Register({ onAuth }) {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [turnstileToken, setTurnstileToken] = useState('');
+    const [checkKey, setCheckKey] = useState(0);
     const navigate = useNavigate();
 
     async function handleSubmit(e) {
@@ -22,67 +27,83 @@ function Register({ onAuth }) {
             setError('Password must be between 8 and 72 characters.');
             return;
         }
+        if (TURNSTILE_ON && !turnstileToken) {
+            setError('Please complete the human check first.');
+            return;
+        }
 
         setSubmitting(true);
         try {
             const res = await fetch(`${API_URL}/api/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+                body: JSON.stringify({
+                    name: name.trim(),
+                    email: email.trim(),
+                    password,
+                    turnstileToken,
+                }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError(data.message || 'Could not create the account. Please try again.');
+                // The old token has been used up, so ask for a new check
+                setTurnstileToken('');
+                setCheckKey(k => k + 1);
                 return;
             }
             onAuth(data);
             navigate('/shop');
         } catch {
             setError('Could not reach the server.');
+            setTurnstileToken('');
+            setCheckKey(k => k + 1);
         } finally {
             setSubmitting(false);
         }
     }
 
     return (
-        <div className="auth-wrap">
-            <div className="auth-card">
-                <h2>Create your account</h2>
-                <form onSubmit={handleSubmit} className="auth-form">
-                    <input
-                        placeholder="Name"
-                        autoComplete="name"
-                        required
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                    />
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        autoComplete="email"
-                        required
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Password (8 to 72 characters)"
-                        autoComplete="new-password"
-                        required
-                        minLength={8}
-                        maxLength={72}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                    />
-                    <button type="submit" disabled={submitting}>
-                        {submitting ? 'Creating account...' : 'Create account'}
-                    </button>
-                </form>
-                {error && <p className="auth-error">{error}</p>}
-                <p className="auth-switch">
-                    Already have an account? <Link to="/login">Login</Link>
-                </p>
-            </div>
+        <div>
+            <h2>Register</h2>
+            <form onSubmit={handleSubmit}>
+                <input
+                    placeholder="Name"
+                    autoComplete="name"
+                    required
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                />
+                <br />
+                <input
+                    type="email"
+                    placeholder="Email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                />
+                <br />
+                <input
+                    type="password"
+                    placeholder="Password (8 to 72 characters)"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    maxLength={72}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                />
+                <br />
+
+                {TURNSTILE_ON && <TurnstileWidget onToken={setTurnstileToken} resetKey={checkKey} />}
+
+                <button type="submit" disabled={submitting || (TURNSTILE_ON && !turnstileToken)}>
+                    {submitting ? 'Creating account...' : 'Create account'}
+                </button>
+            </form>
+            {error && <p style={{ color: 'red' }}>{error}</p>}
+            <p>Already have an account? <Link to="/login">Login</Link></p>
         </div>
     );
 }
