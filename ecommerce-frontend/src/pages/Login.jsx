@@ -34,33 +34,35 @@ function Login({ onAuth }) {
     }
 
     return (
-        <div>
-            <h2>Login</h2>
-            <form onSubmit={handleSubmit}>
-                <input
-                    type="email"
-                    placeholder="Email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                />
-                <br />
-                <input
-                    type="password"
-                    placeholder="Password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                />
-                <br />
-                <button type="submit" disabled={submitting}>
-                    {submitting ? 'Logging in...' : 'Login'}
-                </button>
-            </form>
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            <p>No account? <Link to="/register">Register</Link></p>
+        <div className="auth-wrap">
+            <div className="auth-card">
+                <h2>Welcome back</h2>
+                <form onSubmit={handleSubmit} className="auth-form">
+                    <input
+                        type="email"
+                        placeholder="Email"
+                        autoComplete="email"
+                        required
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                    />
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                    />
+                    <button type="submit" disabled={submitting}>
+                        {submitting ? 'Logging in...' : 'Login'}
+                    </button>
+                </form>
+                {error && <p className="auth-error">{error}</p>}
+                <p className="auth-switch">
+                    No account? <Link to="/register">Register</Link>
+                </p>
+            </div>
         </div>
     );
 }

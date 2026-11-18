@@ -45,43 +45,51 @@ function Register({ onAuth }) {
     }
 
     return (
-        <div>
-            <h2>Register</h2>
-            <form onSubmit={handleSubmit}>
-                <input
-                    placeholder="Name"
-                    autoComplete="name"
-                    required
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                />
-                <br />
-                <input
-                    type="email"
-                    placeholder="Email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                />
-                <br />
-                <input
-                    type="password"
-                    placeholder="Password (8 to 72 characters)"
-                    autoComplete="new-password"
-                    required
-                    minLength={8}
-                    maxLength={72}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                />
-                <br />
-                <button type="submit" disabled={submitting}>
-                    {submitting ? 'Creating account...' : 'Create account'}
-                </button>
-            </form>
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            <p>Already have an account? <Link to="/login">Login</Link></p>
+        <div className="auth-wrap">
+            <div className="auth-card">
+                <h2>Create your account</h2>
+                <form onSubmit={handleSubmit} className="auth-form">
+                    <input
+                        placeholder="Name"
+                        autoComplete="name"
+                        required
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                    />
+                    <input
+                        type="email"
+                        placeholder="Email"
+                        autoComplete="email"
+                        required
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                    />
+                    <input
+                        type="password"
+                        placeholder="Password (8 to 72 characters)"
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                        maxLength={72}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                    />
+
+                    {TURNSTILE_ON && (
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <TurnstileWidget onToken={setTurnstileToken} resetKey={checkKey} />
+                        </div>
+                    )}
+
+                    <button type="submit" disabled={submitting || (TURNSTILE_ON && !turnstileToken)}>
+                        {submitting ? 'Creating account...' : 'Create account'}
+                    </button>
+                </form>
+                {error && <p className="auth-error">{error}</p>}
+                <p className="auth-switch">
+                    Already have an account? <Link to="/login">Login</Link>
+                </p>
+            </div>
         </div>
     );
 }
