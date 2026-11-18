@@ -74,14 +74,7 @@ function Register({ onAuth }) {
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                     />
-
-                    {TURNSTILE_ON && (
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <TurnstileWidget onToken={setTurnstileToken} resetKey={checkKey} />
-                        </div>
-                    )}
-
-                    <button type="submit" disabled={submitting || (TURNSTILE_ON && !turnstileToken)}>
+                    <button type="submit" disabled={submitting}>
                         {submitting ? 'Creating account...' : 'Create account'}
                     </button>
                 </form>
