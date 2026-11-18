@@ -40,6 +40,8 @@ console.log('Allowed origins:', allowedOrigins);
 
 app.use(helmet()); // NEW: safer HTTP headers on every response
 app.use(cors({ origin: allowedOrigins }));
+// Paystack's webhook needs the raw body so its signature can be checked
+app.use('/api/orders/webhook', express.raw({ type: 'application/json', limit: '100kb' }));
 app.use(express.json({ limit: '100kb' }));
 
 // NEW: rate limits. Messages use { message } so the frontend shows them as it does other errors.

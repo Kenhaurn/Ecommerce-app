@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -38,10 +39,10 @@ function cleanDelivery(input) {
 function paymentMatches(data, order) {
     return Boolean(
         data &&
-            data.status &&
-            data.data &&
-            data.data.status === 'success' &&
-            data.data.amount === Math.round(order.total * 100)
+        data.status &&
+        data.data &&
+        data.data.status === 'success' &&
+        data.data.amount === Math.round(order.total * 100)
     );
 }
 
@@ -266,6 +267,67 @@ router.post('/verify', auth, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Paystack calls this directly when a payment succeeds, with no browser involved.
+// No `auth` here: Paystack proves who it is with a signature instead.
+router.post('/webhook', async (req, res) => {
+    try {
+        const signature = req.get('x-paystack-signature');
+        const raw = req.body;
+
+        if (!signature || !Buffer.isBuffer(raw)) {
+            console.error('Webhook rejected: missing signature or raw body');
+            return res.sendStatus(400);
+        }
+
+        const expected = crypto
+            .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
+            .update(raw)
+            .digest('hex');
+        const a = Buffer.from(expected);
+        const b = Buffer.from(signature);
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+            console.error('Webhook rejected: bad signature');
+            return res.sendStatus(401);
+        }
+
+        const event = JSON.parse(raw.toString('utf8'));
+        const reference = event.data && event.data.reference;
+        console.log('Paystack webhook:', event.event, reference);
+
+        if (event.event === 'charge.success' && typeof reference === 'string') {
+            const order = await Order.findOne({
+                $or: [{ reference }, { references: reference }],
+            });
+
+            if (order && order.status === 'pending') {
+                // Ask Paystack ourselves instead of trusting the message body
+                const data = await paystackRequest(
+                    `/transaction/verify/${encodeURIComponent(reference)}`
+                );
+                if (paymentMatches(data, order)) {
+                    await markPaid(order);
+                }
+            } else if (order && order.status === 'cancelled') {
+                // Money arrived for an order that was cancelled: flag it for a refund
+                const data = await paystackRequest(
+                    `/transaction/verify/${encodeURIComponent(reference)}`
+                );
+                if (paymentMatches(data, order)) {
+                    await Order.updateOne(
+                        { _id: order._id, refunded: { $ne: true } },
+                        { paidAfterCancel: true, paidAfterCancelRef: reference }
+                    );
+                }
+            }
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Webhook error:', err);
+        res.sendStatus(500); // a 500 tells Paystack to try again later
     }
 });
 
